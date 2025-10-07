@@ -6,6 +6,6 @@ COPY . /app
 
 RUN pip install -r requirements.txt
 
-EXPOSE 8080
+EXPOSE 8051
 
 CMD ["streamlit", "run", "app.py", "--server.address=0.0.0.0"]
