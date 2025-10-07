@@ -55,7 +55,11 @@ jobs:
 
       - name: Stop existing container on port 8501
         run: |
-          CONTAINER_ID=$(docker ps --filter "publish=8501" -q) if [ ! -z "$CONTAINER_ID" ]; then docker stop $CONTAINER_ID docker rm $CONTAINER_ID fi
+          CONTAINER_ID=$(docker ps --filter "publish=8501" -q)
+          if [ ! -z "$CONTAINER_ID" ]; then
+            docker stop $CONTAINER_ID
+            docker rm $CONTAINER_ID
+          fi
 
       - name: Run Docker Image to serve users
         run: |
