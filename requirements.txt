@@ -1,0 +1,7 @@
+ipython==8.12.3
+langchain==0.3.26
+langchain_groq==0.3.8
+langgraph==0.6.8
+pydantic==2.11.10
+python-dotenv==1.1.1
+streamlit==1.46.0
