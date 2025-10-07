@@ -52,6 +52,31 @@ if st.button("Review Essay", type="primary", use_container_width=True):
                 st.success("Review Complete!")
                 st.markdown("---")
                 
+                # Display Overall Band Score prominently
+                st.subheader("Overall Band Score")
+                col_score1, col_score2, col_score3 = st.columns([1, 2, 1])
+                with col_score2:
+                    st.markdown(f"<h1 style='text-align: center; color: #1f77b4;'>{output['overall_band']:.1f}</h1>", unsafe_allow_html=True)
+                
+                st.markdown("---")
+                
+                # Display Individual Band Scores
+                st.subheader("Individual Band Scores")
+                
+                # Create 4 columns for individual scores
+                score_col1, score_col2, score_col3, score_col4 = st.columns(4)
+                
+                # Assuming the order matches: Task Response, Coherence, Lexical, Grammar
+                individual_scores = output['individual_band']
+                criteria = ["Task Response", "Coherence & Cohesion", "Lexical Resource", "Grammar Range"]
+                
+                for col, score, criterion in zip([score_col1, score_col2, score_col3, score_col4], individual_scores, criteria):
+                    with col:
+                        st.metric(label=criterion, value=f"{score:.1f}")
+                
+                st.markdown("---")
+                
+                # Display Overall Feedback
                 st.subheader("Overall Feedback")
                 st.markdown(output['overall_feedback'])
                 
