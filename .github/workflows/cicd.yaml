@@ -3,7 +3,7 @@ name: Deploy Application Docker Image to EC2 instance
 on:
   push:
     branches: [main]
-
+  workflow_dispatch:
 
 jobs:
   Continuous-Integration:
@@ -11,7 +11,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v1
@@ -33,7 +33,7 @@ jobs:
         run: |
           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .  
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-          echo "::set-output name=image::$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+          echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
 
   Continuous-Deployment:
     needs: Continuous-Integration
@@ -53,14 +53,76 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v1
 
-      - name: Stop existing container on port 8501
+      - name: Pull latest Docker image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: ${{ secrets.ECR_REPO }}
+          IMAGE_TAG: latest
         run: |
+          docker pull $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+
+      - name: Stop and remove existing container
+        run: |
+          # Stop container on port 8501
           CONTAINER_ID=$(docker ps --filter "publish=8501" -q)
           if [ ! -z "$CONTAINER_ID" ]; then
+            echo "Stopping container: $CONTAINER_ID"
             docker stop $CONTAINER_ID
             docker rm $CONTAINER_ID
+          else
+            echo "No container running on port 8501"
+          fi
+          
+          # Also clean up any stopped containers with the same name
+          docker rm -f essay-review-app 2>/dev/null || true
+
+      - name: Clean up old Docker images
+        run: |
+          # Remove dangling images to free up space
+          docker image prune -f
+
+      - name: Run new Docker container
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: ${{ secrets.ECR_REPO }}
+          IMAGE_TAG: latest
+        run: |
+          docker run -d \
+            --name essay-review-app \
+            --restart unless-stopped \
+            -e AWS_ACCESS_KEY_ID="${{ secrets.AWS_ACCESS_KEY_ID }}" \
+            -e AWS_SECRET_ACCESS_KEY="${{ secrets.AWS_SECRET_ACCESS_KEY }}" \
+            -e AWS_DEFAULT_REGION="${{ secrets.AWS_DEFAULT_REGION }}" \
+            -e GROQ_API_KEY="${{ secrets.GROQ_API_KEY }}" \
+            -p 8501:8501 \
+            $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+
+      - name: Wait for container to start
+        run: |
+          echo "Waiting for container to start..."
+          sleep 10
+
+      - name: Verify deployment
+        run: |
+          # Check if container is running
+          if docker ps | grep -q essay-review-app; then
+            echo "Container is running"
+            docker ps --filter "name=essay-review-app"
+          else
+            echo "Container failed to start"
+            docker logs essay-review-app
+            exit 1
+          fi
+          
+          # Check if app is responding
+          if curl -f http://localhost:8501 > /dev/null 2>&1; then
+            echo "App is responding on port 8501"
+          else
+            echo "App may still be starting up..."
           fi
 
-      - name: Run Docker Image to serve users
+      - name: Show container logs
+        if: always()
         run: |
-         docker run -d -e AWS_ACCESS_KEY_ID="${{ secrets.AWS_ACCESS_KEY_ID }}" -e AWS_SECRET_ACCESS_KEY="${{ secrets.AWS_SECRET_ACCESS_KEY }}" -e AWS_DEFAULT_REGION="${{ secrets.AWS_DEFAULT_REGION }}" -e GROQ_API_KEY="${{ secrets.GROQ_API_KEY }}" -p 8501:8501 "${{ steps.login-ecr.outputs.registry }}"/"${{ secrets.ECR_REPO }}":latest
+          echo "Container logs:"
+          docker logs essay-review-app --tail 50
